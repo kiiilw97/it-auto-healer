@@ -27,18 +27,25 @@ foreach ($Path in $TempPaths) {
 }
 Write-Host "[SUCCESS] Temp Files Cleared Successfully!" -ForegroundColor Green
 
-# 3. تنظيف مخلفات التحديثات الآمن (SoftwareDistribution)
+# 3. [تعديل الحماية] تنظيف مخلفات التحديثات الآمن
 Write-Host "`n[..] Cleaning Windows Update Cache Safely..." -ForegroundColor Yellow
 Stop-Service -Name "wuauserv" -Force -ErrorAction SilentlyContinue
+
 $UpdatePath = "$env:SystemRoot\SoftwareDistribution\Download"
-$SizeBefore = (Get-ChildItem $UpdatePath -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
-if (-not $SizeBefore) { $SizeBefore = 0 }
-$SavedMB = [Math]::Round($SizeBefore / 1MB, 2)
+# فحص ذكي: لو المجلد فيه ملفات احسب حجمها، لو فاضي حط صفر فوراً بدون أخطاء
+$UpdateFiles = Get-ChildItem $UpdatePath -Recurse -ErrorAction SilentlyContinue
+if ($UpdateFiles) {
+    $SizeBefore = ($UpdateFiles | Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
+    $SavedMB = [Math]::Round($SizeBefore / 1MB, 2)
+} else {
+    $SavedMB = 0
+}
+
 Remove-Item -Path "$UpdatePath\*" -Recurse -Force -ErrorAction SilentlyContinue
 Start-Service -Name "wuauserv" -ErrorAction SilentlyContinue
 Write-Host "[SUCCESS] Windows Update Cache Cleaned ($SavedMB MB Cleared)!" -ForegroundColor Green
 
-# 4. [تعديل الفحص الذكي] التثبيت الصامت للبرامج الناقصة فقط
+# 4. التثبيت الصامت للبرامج الناقصة فقط
 Write-Host "`n[..] Starting Smart Software Installer..." -ForegroundColor Yellow
 
 $Apps = @(
@@ -50,11 +57,9 @@ $Apps = @(
 $InstalledApps = @()
 $SkippedApps = @()
 
-# جلب قائمة البرامج المثبتة في الجهاز حالياً عشان نقارن بلمح البصر
 $InstalledList = winget list --accept-source-agreements -ErrorAction SilentlyContinue | Out-String
 
 foreach ($App in $Apps) {
-    # الفحص الذكي: هل معرف البرنامج موجود في اللستة؟
     if ($InstalledList -match $App.ID) {
         Write-Host "[INFO] $($App.Name) is already installed. Skipping..." -ForegroundColor Gray
         $SkippedApps += $App.Name
