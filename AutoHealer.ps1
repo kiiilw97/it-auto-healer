@@ -45,58 +45,25 @@ Remove-Item -Path "$UpdatePath\*" -Recurse -Force -ErrorAction SilentlyContinue
 Start-Service -Name "wuauserv" -ErrorAction SilentlyContinue
 Write-Host "[SUCCESS] Windows Update Cache Cleaned ($SavedMB MB Cleared)!" -ForegroundColor Green
 
-# 4. التثبيت الصامت الذكي المطور ومنع تكرار الحالات
+# 4. [الحل الحاسم] التثبيت الصامت الذكي بالفحص المباشر لأمر Winget
 Write-Host "`n[..] Starting Smart Software Installer..." -ForegroundColor Yellow
 
 $Apps = @(
-    @{ 
-        Name = "Google Chrome"
-        ID = "Google.Chrome"
-        Paths = @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe", "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe", "$env:LocalAppData\Google\Chrome\Application\chrome.exe")
-        RegName = "*Chrome*"
-    },
-    @{ 
-        Name = "Mozilla Firefox"
-        ID = "Mozilla.Firefox"
-        Paths = @("$env:ProgramFiles\Mozilla Firefox\firefox.exe", "${env:ProgramFiles(x86)}\Mozilla Firefox\firefox.exe", "$env:LocalAppData\Mozilla Firefox\firefox.exe")
-        RegName = "*Mozilla Firefox*"
-    },
-    @{ 
-        Name = "7-Zip"
-        ID = "7zip.7zip"
-        Paths = @("$env:ProgramFiles\7-Zip\7z.exe", "${env:ProgramFiles(x86)}\7-Zip\7z.exe")
-        RegName = "*7-Zip*"
-    }
+    @{ Name = "Google Chrome"; ID = "Google.Chrome" },
+    @{ Name = "Mozilla Firefox"; ID = "Mozilla.Firefox" },
+    @{ Name = "7-Zip"; ID = "7zip.7zip" }
 )
 
 $InstalledApps = @()
 $SkippedApps = @()
 
-$RegPaths = @(
-    "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*",
-    "HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
-    "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*"
-)
-$RegList = Get-ItemProperty $RegPaths -ErrorAction SilentlyContinue | Select-Object -ExpandProperty DisplayName -ErrorAction SilentlyContinue
-
 foreach ($App in $Apps) {
-    $AlreadyExists = $false
-
-    # فحص دقيق عبر الملفات والمسارات
-    foreach ($Path in $App.Paths) {
-        if (Test-Path $Path) {
-            $AlreadyExists = $true
-            break
-        }
-    }
-
-    # فحص دعم إضافي عبر الريجستري
-    if (-not $AlreadyExists) {
-        $CheckReg = $RegList | Where-Object { $_ -like $App.RegName }
-        if ($CheckReg) { $AlreadyExists = $true }
-    }
-
-    if ($AlreadyExists) {
+    Write-Host "[..] Checking $($App.Name)..." -ForegroundColor White
+    
+    # فحص مباشر وسريع هل المعرف مثبت في لستة الويندوز الفعليه؟
+    $CheckApp = winget list --id $($App.ID) --accept-source-agreements -ErrorAction SilentlyContinue | Out-String
+    
+    if ($CheckApp -match $App.ID) {
         Write-Host "[INFO] $($App.Name) is already installed. Skipping..." -ForegroundColor Gray
         $SkippedApps += $App.Name
     } else {
@@ -118,10 +85,10 @@ if ($WinKey) {
     Write-Host "[INFO] Digital License detected." -ForegroundColor Gray
 }
 
-# 6. لوحة معلومات الشبكة المستقرة وتجنب الحلقات الوهمية
+# 6. لوحة معلومات الشبكة المستقرة
 Write-Host "`n[..] Checking Network Status..." -ForegroundColor Yellow
 $LocalIP = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike "127*" -and $_.IPAddress -notlike "169.254*" }).IPAddress | Select-Object -First 1
-if (-not $LocalIP) { $LocalIP = "192.168.1.1" }
+if (-not $LocalIP) { $LocalIP = "169.254.255.173" }
 Write-Host "-> Your Local IP: $LocalIP" -ForegroundColor White
 
 if (Test-Connection -ComputerName 8.8.8.8 -Count 1 -Quiet) {
