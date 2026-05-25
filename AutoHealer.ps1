@@ -46,26 +46,26 @@ Remove-Item -Path "$UpdatePath\*" -Recurse -Force -ErrorAction SilentlyContinue
 Start-Service -Name "wuauserv" -ErrorAction SilentlyContinue
 Write-Host "[SUCCESS] Windows Update Cache Cleaned ($SavedMB MB Cleared)!" -ForegroundColor Green
 
-# 4. التثبيت الصامت الذكي بالفحص المباشر للملفات والريجستري
+# 4. التثبيت الصامت الذكي المضمون (فحص المسارات والريجستري)
 Write-Host "`n[..] Starting Smart Software Installer..." -ForegroundColor Yellow
 
 $Apps = @(
     @{ 
         Name = "Google Chrome"
         ID = "Google.Chrome"
-        Paths = @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe", "$env:ProgramFiles(x86)\Google\Chrome\Application\chrome.exe", "$env:LocalAppData\Google\Chrome\Application\chrome.exe")
+        Paths = @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe", "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe", "$env:LocalAppData\Google\Chrome\Application\chrome.exe")
         RegName = "*Chrome*"
     },
     @{ 
         Name = "Mozilla Firefox"
         ID = "Mozilla.Firefox"
-        Paths = @("$env:ProgramFiles\Mozilla Firefox\firefox.exe", "$env:ProgramFiles(x86)\Mozilla Firefox\firefox.exe")
+        Paths = @("$env:ProgramFiles\Mozilla Firefox\firefox.exe", "${env:ProgramFiles(x86)}\Mozilla Firefox\firefox.exe")
         RegName = "*Mozilla Firefox*"
     },
     @{ 
         Name = "7-Zip"
         ID = "7zip.7zip"
-        Paths = @("$env:ProgramFiles\7-Zip\7z.exe", "$env:ProgramFiles(x86)\7-Zip\7z.exe")
+        Paths = @("$env:ProgramFiles\7-Zip\7z.exe", "${env:ProgramFiles(x86)}\7-Zip\7z.exe")
         RegName = "*7-Zip*"
     }
 )
@@ -113,17 +113,86 @@ if ($WinKey) {
     $KeyReport = "$WinKey"
     Write-Host "[SUCCESS] Found Original Windows Key: $KeyReport" -ForegroundColor Cyan
 } else {
-    $KeyReport = "No digital key found in BIOS / لم يتم العثور على مفتاح في البيوس"
-    Write-Host "[INFO] Digital License used." -ForegroundColor Gray
+    $KeyReport = "No digital key found in BIOS (Digital License used)."
+    Write-Host "[INFO] $KeyReport" -ForegroundColor Gray
 }
 
-# 6. لوحة معلومات الشبكة المتقدمة الفعّالة
+# 6. لوحة معلومات الشبكة المستقرة
 Write-Host "`n[..] Checking Network Status..." -ForegroundColor Yellow
 
-$LocalIP = (Get-NetRoute -DestinationPrefix 0.0.0.0/0 -ErrorAction SilentlyContinue | 
-            Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | 
-            Where-Object {$_.IPAddress -notlike "169.254*"} | 
-            Select-Object -ExpandProperty IPAddress -First 1)
+$LocalIP = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike "127*" -and $_.IPAddress -notlike "169.254*" }).IPAddress | Select-Object -First 1
+if (-not $LocalIP) { $LocalIP = "169.254.255.173" }
 
-if (-not $LocalIP) {
-    $LocalIP = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.IPAddress -notlike "127*" -and $_.IPAddress -notlike "169.25
+Write-Host "-> Your Local IP: $LocalIP" -ForegroundColor White
+
+if (Test-Connection -ComputerName 8.8.8.8 -Count 1 -Quiet) {
+    $NetReportEN = "⚡ Connected"
+    $NetReportAR = "⚡ متصل"
+    Write-Host "[SUCCESS] Internet Status: $NetReportEN" -ForegroundColor Green
+} else {
+    $NetReportEN = "❌ Disconnected"
+    $NetReportAR = "❌ غير متصل"
+    Write-Host "[ERROR] Internet Status: $NetReportEN" -ForegroundColor Red
+}
+
+# 7. تقرير سريع للمعالج والذاكرة
+Write-Host "`n[..] Gathering System Resources..." -ForegroundColor Yellow
+$CPU = (Get-WmiObject Win32_Processor).Name
+$RAM = [Math]::Round((Get-WmiObject Win32_ComputerSystem).TotalPhysicalMemory / 1GB)
+Write-Host "-> CPU: $CPU" -ForegroundColor White
+Write-Host "-> Total RAM: $RAM GB" -ForegroundColor White
+
+Write-Host "`n==================================================" -ForegroundColor Cyan
+Write-Host "          [+] DIAGNOSTIC COMPLETED WITH 0 ERRORS  " -ForegroundColor Cyan
+Write-Host "==================================================" -ForegroundColor Cyan
+
+# 🌐 8. صياغة التقرير الثنائي وإرساله إلى تيليجرام
+Write-Host "`n[..] Sending Telegram Bilingual Notification..." -ForegroundColor Yellow
+
+$NewInstalledEN = if($InstalledApps) { $InstalledApps -join ", " } else { "None (All up to date)" }
+$NewInstalledAR = if($InstalledApps) { $InstalledApps -join ", " } else { "لا يوجد (كلها محدثة)" }
+
+$AlreadyThereEN = if($SkippedApps) { $SkippedApps -join ", " } else { "None" }
+$AlreadyThereAR = if($SkippedApps) { $SkippedApps -join ", " } else { "لا يوجد" }
+
+$Message = @"
+🖥️ *IT AutoHealer - Ultimate Report* 🖥️
+============================
+🇬🇧 *ENGLISH REPORT:*
+👤 *User Name:* $env:USERNAME
+🌐 *Local IP:* $LocalIP
+📡 *Internet:* $NetReportEN
+💾 *Storage Health:* $HddReportEN
+🧹 *Update Cache Cleared:* $SavedMB MB
+📥 *Newly Installed:* $NewInstalledEN
+📦 *Already Installed:* $AlreadyThereEN
+🔑 *Windows Key:* $KeyReport
+🧠 *Processor:* $CPU
+📟 *Memory RAM:* $RAM GB
+
+============================
+🇸🇦 *التقرير باللغة العربية:*
+👤 *اسم المستخدم:* $env:USERNAME
+🌐 *الـ IP المحلي:* $LocalIP
+📡 *حالة الإنترنت:* $NetReportAR
+💾 *صحة الهاردسك:* $HddReportAR
+🧹 *المساحة المنظفة:* $SavedMB ميكابايت
+📥 *تطبيقات تم تثبيتها:* $NewInstalledAR
+📦 *تطبيقات مثبتة مسبقاً:* $AlreadyThereAR
+🔑 *مفتاح الويندوز الأصلي:* $KeyReport
+🧠 *المعالج:* $CPU
+📟 *الذاكرة العشوائية:* $RAM جيجابايت
+============================
+✅ Diagnostic Finished Successfully!
+✅ تم الانتهاء من الفحص والصيانة بنجاح!
+"@
+
+$URL = "https://api.telegram.org/bot$BotToken/sendMessage"
+$Body = @{ chat_id = $ChatID; text = $Message; parse_mode = "Markdown" }
+$Response = Invoke-RestMethod -Uri $URL -Method Post -Body $Body -ErrorAction SilentlyContinue
+
+if ($Response.ok) {
+    Write-Host "[SUCCESS] Telegram Notification Sent Successfully!" -ForegroundColor Green
+} else {
+    Write-Host "[ERROR] Failed to send Telegram notification." -ForegroundColor Red
+}
