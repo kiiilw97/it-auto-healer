@@ -1,12 +1,20 @@
-# تلوين الواجهة المحلية
+# تلوين الواجهة المحلية وترتيب الشاشة
 Clear-Host
 Write-Host "==================================================" -ForegroundColor Cyan
 Write-Host "     [+] SYSTEM DIAGNOSTIC & CLEANUP SCRIPT       " -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Cyan
 
-# بيانات التيليجرام
+# بيانات التيليجرام الخاصه بك
 $BotToken = "8845124533:AAFOyBL62IdyNsfxTJXzYoNtxVdvXAbhi-A"
 $ChatID   = "1778953224"
+
+# شاشة قفل الاختيار الذكي
+Write-Host "`n[?] Select an option / اختر الإجراء المناسب:" -ForegroundColor Yellow
+Write-Host " [1] Clean & Diagnostic Only (فحص وصيانة وتنظيف فقط)" -ForegroundColor Green
+Write-Host " [2] Install Full Software Suite (تثبيت الحزمة الكاملة للبرامج)" -ForegroundColor Cyan
+Write-Host "--------------------------------------------------" -ForegroundColor Gray
+
+$Choice = Read-Host "Enter your choice (1 or 2) / أدخل اختيارك"
 
 # 1. فحص صحة الهاردسك
 Write-Host "`n[..] Checking Storage Health..." -ForegroundColor Yellow
@@ -43,58 +51,31 @@ Remove-Item -Path "$UpdatePath\*" -Recurse -Force -ErrorAction SilentlyContinue
 Start-Service -Name "wuauserv" -ErrorAction SilentlyContinue
 Write-Host "[SUCCESS] Windows Update Cache Cleaned ($SavedMB MB Cleared)!" -ForegroundColor Green
 
-# 4. [الفحص الحاسم والنهائي للفايرفوكس وبقية التطبيقات]
-Write-Host "`n[..] Starting Smart Software Installer..." -ForegroundColor Yellow
-
-$Apps = @(
-    @{ Name = "Google Chrome"; ID = "Google.Chrome"; RegStr = "Chrome"; HardPath = "$env:ProgramFiles\Google\Chrome\Application\chrome.exe" },
-    @{ Name = "Mozilla Firefox"; ID = "Mozilla.Firefox"; RegStr = "Mozilla Firefox"; HardPath = "$env:ProgramFiles\Mozilla Firefox\firefox.exe" },
-    @{ Name = "7-Zip"; ID = "7zip.7zip"; RegStr = "7-Zip"; HardPath = "$env:ProgramFiles\7-Zip\7z.exe" }
-)
-
+# 4. تنفيذ التثبيت أو التخطي بناءً على اختيارك بالملي
 $InstalledApps = @()
 $SkippedApps = @()
 
-# جلب لستة أسماء البرامج الصافية فقط من سجل النظام بدون أي نصوص خارجية
-$RegPaths = @(
-    "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*",
-    "HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
-    "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*"
+$Apps = @(
+    @{ Name = "Google Chrome"; ID = "Google.Chrome" },
+    @{ Name = "Mozilla Firefox"; ID = "Mozilla.Firefox" },
+    @{ Name = "7-Zip"; ID = "7zip.7zip" }
 )
-$RegList = Get-ItemProperty $RegPaths -ErrorAction SilentlyContinue | Select-Object -ExpandProperty DisplayName -ErrorAction SilentlyContinue
 
-foreach ($App in $Apps) {
-    Write-Host "[..] Checking status for $($App.Name)..." -ForegroundColor White
-    $IsInstalled = $false
-
-    # الفحص الأول: بالمسار المباشر على الهاردسك
-    if (Test-Path $App.HardPath) {
-        $IsInstalled = $true
-    }
-    
-    # الفحص الثاني: بالاسم الدقيق داخل مصفوفة الريجستري
-    if (-not $IsInstalled) {
-        foreach ($RegItem in $RegList) {
-            if ($RegItem -eq $App.RegStr -or $RegItem -like "*$($App.RegStr)*") {
-                $IsInstalled = $true
-                break
-            }
-        }
-    }
-
-    # اتخاذ القرار الصارم بناء على الفحص المعزول
-    if ($IsInstalled -eq $true) {
-        Write-Host "[INFO] $($App.Name) is already installed. Skipping..." -ForegroundColor Gray
-        $SkippedApps += $App.Name
-    } else {
-        Write-Host "[..] $($App.Name) NOT found. Installing silently..." -ForegroundColor Cyan
+if ($Choice -eq "2") {
+    Write-Host "`n[..] Executing Full Software Suite Installer..." -ForegroundColor Cyan
+    foreach ($App in $Apps) {
+        Write-Host "[..] Installing $($App.Name) silently..." -ForegroundColor White
         $null = winget install --id $($App.ID) --silent --accept-source-agreements --accept-package-agreements --scope user -ErrorAction SilentlyContinue
         $InstalledApps += $App.Name
     }
+} else {
+    Write-Host "`n[INFO] Option [1] Selected. Skipping Software Installation." -ForegroundColor Gray
+    foreach ($App in $Apps) {
+        $SkippedApps += $App.Name
+    }
 }
-Write-Host "[SUCCESS] All applications processed!" -ForegroundColor Green
 
-# 5. صيد مفتاح تنشيط الويندوز الأصلي
+# 5. صيد مفتاح تنشيط الويندوز الاصلي
 Write-Host "`n[..] Extracting Windows Product Key..." -ForegroundColor Yellow
 $WinKey = (Get-WmiObject -Class SoftwareLicensingService).OA3xOriginalProductKey
 if ($WinKey) {
@@ -125,23 +106,21 @@ if (Test-Connection -ComputerName 8.8.8.8 -Count 1 -Quiet) {
 Write-Host "`n[..] Gathering System Resources..." -ForegroundColor Yellow
 $CPU = (Get-WmiObject Win32_Processor).Name
 $RAM = [Math]::Round((Get-WmiObject Win32_ComputerSystem).TotalPhysicalMemory / 1GB)
-Write-Host "-> CPU: $CPU" -ForegroundColor White
-Write-Host "-> Total RAM: $RAM GB" -ForegroundColor White
 
 Write-Host "`n==================================================" -ForegroundColor Cyan
 Write-Host "          [+] DIAGNOSTIC COMPLETED WITH 0 ERRORS  " -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Cyan
 
-# 🌐 8. إرسال التقارير المنفصلة (عزل تام للمحاذاة البصرية)
+# 🌐 8. صياغة التقرير وإرساله منفصلاً بناءً على نوع العملية
 Write-Host "`n[..] Sending Telegram Notifications..." -ForegroundColor Yellow
 
-$NewInstalledEN = if($InstalledApps) { $InstalledApps -join ", " } else { "None" }
-$NewInstalledAR = if($InstalledApps) { $InstalledApps -join ", " } else { "لا يوجد" }
+$NewInstalledEN = if($InstalledApps) { $InstalledApps -join ", " } else { "None (Skipped/Up to date)" }
+$NewInstalledAR = if($InstalledApps) { $InstalledApps -join ", " } else { "لا يوجد (تم تخطي التثبيت)" }
 
 $AlreadyThereEN = if($SkippedApps) { $SkippedApps -join ", " } else { "None" }
 $AlreadyThereAR = if($SkippedApps) { $SkippedApps -join ", " } else { "لا يوجد" }
 
-# الرسالة الأولى: الإنجليزية (يسار)
+# التقرير الإنجليزي (يسار)
 $MessageEN = @"
 🖥️ *IT AutoHealer - English Report*
 ============================
@@ -151,15 +130,15 @@ $MessageEN = @"
 💾 *Storage Health:* $HddReportEN
 🧹 *Update Cache Cleared:* $SavedMB MB
 📥 *Newly Installed:* $NewInstalledEN
-📦 *Already Installed:* $AlreadyThereEN
+📦 *Skipped Apps:* $AlreadyThereEN
 🔑 *Windows Key:* $KeyReport
 🧠 *Processor:* $CPU
 📟 *Memory RAM:* $RAM GB
 ============================
-✅ Diagnostic Finished Successfully!
+✅ Process Mode [$Choice] Finished!
 "@
 
-# الرسالة الثانية: العربية (يمين)
+# التقرير العربي (يمين)
 $MessageAR = @"
 🖥️ *مساعد الصيانة الآلي - التقرير العربي*
 ============================
@@ -169,20 +148,20 @@ $MessageAR = @"
 صحة الهاردسك: $HddReportAR
 المساحة المنظفة: $SavedMB ميجابايت
 تطبيقات تم تثبيتها: $NewInstalledAR
-تطبيقات مثبتة مسبقاً: $AlreadyThereAR
+تطبيقات تم تخطيها: $AlreadyThereAR
 مفتاح الويندوز الأصلي: $KeyReport
 المعالج: $CPU
 الذاكرة العشوائية: $RAM جيجابايت
 ============================
-✅ تم الانتهاء من الفحص والصيانة بنجاح!
+✅ تم الانتهاء من الخيار [$Choice] بنجاح!
 "@
 
 $URL = "https://api.telegram.org/bot$BotToken/sendMessage"
 
-# إرسال الإنجليزي أولاً
+# إرسال الإنجليزي
 $BodyEN = @{ chat_id = $ChatID; text = $MessageEN; parse_mode = "Markdown" }
 $null = Invoke-RestMethod -Uri $URL -Method Post -Body $BodyEN -ErrorAction SilentlyContinue
 
-# إرسال العربي ثانياً
+# إرسال العربي
 $BodyAR = @{ chat_id = $ChatID; text = $MessageAR; parse_mode = "Markdown" }
 $Response = Invoke-RestMethod -Uri $URL -Method Post -Body $BodyAR -ErrorAction SilentlyContinue
