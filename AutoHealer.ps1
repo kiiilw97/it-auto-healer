@@ -16,21 +16,21 @@ if ($DriveStatus.PredictFailure -eq $true) {
 # 2. تنظيف ملفات الـ Temp الكاتمة للجهاز
 Write-Host "`n[..] Cleaning System Temp Files..." -ForegroundColor Yellow
 $TempPaths = @("$env:TEMP\*", "$env:SystemRoot\Temp\*")
-foreach ($Path in $TempPaths) {
+foreach ($Path in $Path) {
     Remove-Item -Path $Path -Recurse -Force -ErrorAction SilentlyContinue
 }
 Write-Host "[SUCCESS] Temp Files Cleared Successfully!" -ForegroundColor Green
 
-# 3. [ميزة جديدة] صيد مفتاح تنشيط الويندوز الأصلي من المذربورد
+# 3. صيد مفتاح تنشيط الويندوز الأصلي من المذربورد
 Write-Host "`n[..] Extracting Windows Product Key..." -ForegroundColor Yellow
 $WinKey = (Get-WmiObject -Class SoftwareLicensingService).OA3xOriginalProductKey
 if ($WinKey) {
-    Write-Host "[SUCCESS] Found Original Windows Key: $WinKey" -ForegroundColor Integrated
+    Write-Host "[SUCCESS] Found Original Windows Key: $WinKey" -ForegroundColor Cyan
 } else {
-    Write-Host "[INFO] No digital key found in BIOS (Might be digital license)." -ForegroundColor Digital
+    Write-Host "[INFO] No digital key found in BIOS (Digital License used)." -ForegroundColor Gray
 }
 
-# 4. [ميزة جديدة] لوحة معلومات الشبكة السريعة
+# 4. لوحة معلومات الشبكة السريعة
 Write-Host "`n[..] Checking Network Status..." -ForegroundColor Yellow
 $LocalIP = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.IPAddress -notlike "127*" -and $_.InterfaceAlias -notlike "*Loopback*"}).IPAddress | Select-Object -First 1
 Write-Host "-> Your Local IP: $LocalIP" -ForegroundColor White
