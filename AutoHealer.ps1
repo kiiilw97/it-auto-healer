@@ -43,31 +43,47 @@ Remove-Item -Path "$UpdatePath\*" -Recurse -Force -ErrorAction SilentlyContinue
 Start-Service -Name "wuauserv" -ErrorAction SilentlyContinue
 Write-Host "[SUCCESS] Windows Update Cache Cleaned ($SavedMB MB Cleared)!" -ForegroundColor Green
 
-# 4. الفحص الذكي الصارم للتطبيقات ومنع التكرار نهائياً
+# 4. [الفحص الحاسم والنهائي للفايرفوكس وبقية التطبيقات]
 Write-Host "`n[..] Starting Smart Software Installer..." -ForegroundColor Yellow
 
 $Apps = @(
-    @{ Name = "Google Chrome"; ID = "Google.Chrome"; RegStr = "Chrome" },
-    @{ Name = "Mozilla Firefox"; ID = "Mozilla.Firefox"; RegStr = "Firefox" },
-    @{ Name = "7-Zip"; ID = "7zip.7zip"; RegStr = "7-Zip" }
+    @{ Name = "Google Chrome"; ID = "Google.Chrome"; RegStr = "Chrome"; HardPath = "$env:ProgramFiles\Google\Chrome\Application\chrome.exe" },
+    @{ Name = "Mozilla Firefox"; ID = "Mozilla.Firefox"; RegStr = "Mozilla Firefox"; HardPath = "$env:ProgramFiles\Mozilla Firefox\firefox.exe" },
+    @{ Name = "7-Zip"; ID = "7zip.7zip"; RegStr = "7-Zip"; HardPath = "$env:ProgramFiles\7-Zip\7z.exe" }
 )
 
 $InstalledApps = @()
 $SkippedApps = @()
 
-# جلب لستة البرامج المثبتة في النظام من الريجستري مباشرة لقطع الشك باليقين
+# جلب لستة أسماء البرامج الصافية فقط من سجل النظام بدون أي نصوص خارجية
 $RegPaths = @(
     "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*",
     "HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
     "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*"
 )
-$InstalledRegList = Get-ItemProperty $RegPaths -ErrorAction SilentlyContinue | Select-Object -ExpandProperty DisplayName -ErrorAction SilentlyContinue | Out-String
+$RegList = Get-ItemProperty $RegPaths -ErrorAction SilentlyContinue | Select-Object -ExpandProperty DisplayName -ErrorAction SilentlyContinue
 
 foreach ($App in $Apps) {
-    Write-Host "[..] Checking $($App.Name)..." -ForegroundColor White
+    Write-Host "[..] Checking status for $($App.Name)..." -ForegroundColor White
+    $IsInstalled = $false
+
+    # الفحص الأول: بالمسار المباشر على الهاردسك
+    if (Test-Path $App.HardPath) {
+        $IsInstalled = $true
+    }
     
-    # إذا وجدنا اسم البرنامج بالريجستري، يعني مثبت وموجود 100%
-    if ($InstalledRegList -match $App.RegStr) {
+    # الفحص الثاني: بالاسم الدقيق داخل مصفوفة الريجستري
+    if (-not $IsInstalled) {
+        foreach ($RegItem in $RegList) {
+            if ($RegItem -eq $App.RegStr -or $RegItem -like "*$($App.RegStr)*") {
+                $IsInstalled = $true
+                break
+            }
+        }
+    }
+
+    # اتخاذ القرار الصارم بناء على الفحص المعزول
+    if ($IsInstalled -eq $true) {
         Write-Host "[INFO] $($App.Name) is already installed. Skipping..." -ForegroundColor Gray
         $SkippedApps += $App.Name
     } else {
@@ -76,16 +92,16 @@ foreach ($App in $Apps) {
         $InstalledApps += $App.Name
     }
 }
-Write-Host "[SUCCESS] Application processing completed!" -ForegroundColor Green
+Write-Host "[SUCCESS] All applications processed!" -ForegroundColor Green
 
-# 5. صيد مفتاح تنشيط الويندوز الاصلي
+# 5. صيد مفتاح تنشيط الويندوز الأصلي
 Write-Host "`n[..] Extracting Windows Product Key..." -ForegroundColor Yellow
 $WinKey = (Get-WmiObject -Class SoftwareLicensingService).OA3xOriginalProductKey
 if ($WinKey) {
     $KeyReport = "$WinKey"
     Write-Host "[SUCCESS] Found Original Windows Key: $KeyReport" -ForegroundColor Cyan
 } else {
-    $KeyReport = "No digital key found in BIOS (Digital License used)"
+    $KeyReport = "No digital key found in BIOS (Digital License used)."
     Write-Host "[INFO] Digital License detected." -ForegroundColor Gray
 }
 
@@ -116,8 +132,8 @@ Write-Host "`n==================================================" -ForegroundCol
 Write-Host "          [+] DIAGNOSTIC COMPLETED WITH 0 ERRORS  " -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Cyan
 
-# 🌐 8. صياغة وإرسال التقرير (فصل كامل لضمان المحاذاة البصرية بالتيليجرام)
-Write-Host "`n[..] Sending Clean Telegram Bilingual Notifications..." -ForegroundColor Yellow
+# 🌐 8. إرسال التقارير المنفصلة (عزل تام للمحاذاة البصرية)
+Write-Host "`n[..] Sending Telegram Notifications..." -ForegroundColor Yellow
 
 $NewInstalledEN = if($InstalledApps) { $InstalledApps -join ", " } else { "None" }
 $NewInstalledAR = if($InstalledApps) { $InstalledApps -join ", " } else { "لا يوجد" }
@@ -125,7 +141,7 @@ $NewInstalledAR = if($InstalledApps) { $InstalledApps -join ", " } else { "لا 
 $AlreadyThereEN = if($SkippedApps) { $SkippedApps -join ", " } else { "None" }
 $AlreadyThereAR = if($SkippedApps) { $SkippedApps -join ", " } else { "لا يوجد" }
 
-# الرسالة الأولى: التقرير الإنجليزي الصافي (LTR)
+# الرسالة الأولى: الإنجليزية (يسار)
 $MessageEN = @"
 🖥️ *IT AutoHealer - English Report*
 ============================
@@ -143,7 +159,7 @@ $MessageEN = @"
 ✅ Diagnostic Finished Successfully!
 "@
 
-# الرسالة الثانية: التقرير العربي الصافي (RTL)
+# الرسالة الثانية: العربية (يمين)
 $MessageAR = @"
 🖥️ *مساعد الصيانة الآلي - التقرير العربي*
 ============================
@@ -170,9 +186,3 @@ $null = Invoke-RestMethod -Uri $URL -Method Post -Body $BodyEN -ErrorAction Sile
 # إرسال العربي ثانياً
 $BodyAR = @{ chat_id = $ChatID; text = $MessageAR; parse_mode = "Markdown" }
 $Response = Invoke-RestMethod -Uri $URL -Method Post -Body $BodyAR -ErrorAction SilentlyContinue
-
-if ($Response.ok) {
-    Write-Host "[SUCCESS] Clean Reports Sent Successfully!" -ForegroundColor Green
-} else {
-    Write-Host "[ERROR] Failed to send Telegram notification." -ForegroundColor Red
-}
