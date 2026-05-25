@@ -28,7 +28,7 @@ foreach ($Path in $TempPaths) {
 }
 Write-Host "[SUCCESS] Temp Files Cleared Successfully!" -ForegroundColor Green
 
-# 3. تنظيف مخلفات التحديثات الآمن
+# 3. تنظيف مخلفات التحديثات الآمن لمنع تعليق المساحة
 Write-Host "`n[..] Cleaning Windows Update Cache Safely..." -ForegroundColor Yellow
 Stop-Service -Name "wuauserv" -Force -ErrorAction SilentlyContinue
 
@@ -45,7 +45,7 @@ Remove-Item -Path "$UpdatePath\*" -Recurse -Force -ErrorAction SilentlyContinue
 Start-Service -Name "wuauserv" -ErrorAction SilentlyContinue
 Write-Host "[SUCCESS] Windows Update Cache Cleaned ($SavedMB MB Cleared)!" -ForegroundColor Green
 
-# 4. [الحل الحاسم] التثبيت الصامت الذكي بالفحص المباشر لأمر Winget
+# 4. التثبيت الصامت الفعال ومعالجة ترميز الألوان المخفي في Winget
 Write-Host "`n[..] Starting Smart Software Installer..." -ForegroundColor Yellow
 
 $Apps = @(
@@ -57,13 +57,15 @@ $Apps = @(
 $InstalledApps = @()
 $SkippedApps = @()
 
+# جلب مخرجات لستة winget وتنظيفها من رموز الـ ANSI تماماً لضمان مطابقة النص الصافي
+$WingetRaw = winget list --accept-source-agreements -ErrorAction SilentlyContinue | Out-String
+$CleanWingetList = $WingetRaw -replace "\x1B\[[0-9;]*[a-zA-Z]", ""
+
 foreach ($App in $Apps) {
-    Write-Host "[..] Checking $($App.Name)..." -ForegroundColor White
+    Write-Host "[..] Verifying status for $($App.Name)..." -ForegroundColor White
     
-    # فحص مباشر وسريع هل المعرف مثبت في لستة الويندوز الفعليه؟
-    $CheckApp = winget list --id $($App.ID) --accept-source-agreements -ErrorAction SilentlyContinue | Out-String
-    
-    if ($CheckApp -match $App.ID) {
+    # التحقق النظيف والمباشر من المعرف داخل اللستة المطهرة
+    if ($CleanWingetList -match $App.ID) {
         Write-Host "[INFO] $($App.Name) is already installed. Skipping..." -ForegroundColor Gray
         $SkippedApps += $App.Name
     } else {
@@ -74,14 +76,14 @@ foreach ($App in $Apps) {
 }
 Write-Host "[SUCCESS] All applications checked and processed!" -ForegroundColor Green
 
-# 5. صيد مفتاح تنشيط الويندوز الاصلي
+# 5. صيد مفتاح تنشيط الويندوز الأصلي من المذربورد
 Write-Host "`n[..] Extracting Windows Product Key..." -ForegroundColor Yellow
 $WinKey = (Get-WmiObject -Class SoftwareLicensingService).OA3xOriginalProductKey
 if ($WinKey) {
     $KeyReport = "$WinKey"
     Write-Host "[SUCCESS] Found Original Windows Key: $KeyReport" -ForegroundColor Cyan
 } else {
-    $KeyReport = "No digital key found in BIOS (Digital License used)"
+    $KeyReport = "No digital key found in BIOS (Digital License used)."
     Write-Host "[INFO] Digital License detected." -ForegroundColor Gray
 }
 
@@ -112,8 +114,8 @@ Write-Host "`n==================================================" -ForegroundCol
 Write-Host "          [+] DIAGNOSTIC COMPLETED WITH 0 ERRORS  " -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Cyan
 
-# 🌐 8. صياغة التقرير الذكي والمحاذاة البصرية المنضبطة للتليجرام
-Write-Host "`n[..] Sending Clean Telegram Bilingual Notification..." -ForegroundColor Yellow
+# 🌐 8. صياغة التقرير وإرساله منفصلاً لضمان المحاذاة البصرية المثالية
+Write-Host "`n[..] Sending Telegram Notifications..." -ForegroundColor Yellow
 
 $NewInstalledEN = if($InstalledApps) { $InstalledApps -join ", " } else { "None" }
 $NewInstalledAR = if($InstalledApps) { $InstalledApps -join ", " } else { "لا يوجد" }
@@ -121,10 +123,10 @@ $NewInstalledAR = if($InstalledApps) { $InstalledApps -join ", " } else { "لا 
 $AlreadyThereEN = if($SkippedApps) { $SkippedApps -join ", " } else { "None" }
 $AlreadyThereAR = if($SkippedApps) { $SkippedApps -join ", " } else { "لا يوجد" }
 
-$Message = @"
-🖥️ *IT AutoHealer - Smart Framework Report*
+# الرسالة الأولى: التقرير الإنجليزي الصافي (مستقيم لليسار)
+$MessageEN = @"
+🖥️ *IT AutoHealer - English Report*
 ============================
-🇬🇧 *ENGLISH REPORT:*
 👤 *User Name:* $env:USERNAME
 🌐 *Local IP:* $LocalIP
 📡 *Internet:* $NetReportEN
@@ -135,9 +137,14 @@ $Message = @"
 🔑 *Windows Key:* $KeyReport
 🧠 *Processor:* $CPU
 📟 *Memory RAM:* $RAM GB
-
 ============================
-🇸🇦 *التقرير باللغة العربية:*
+✅ Diagnostic Finished Successfully!
+"@
+
+# الرسالة الثانية: التقرير العربي الصافي المعزول (متناسق تماماً لليمين)
+$MessageAR = @"
+🖥️ *مساعد الصيانة الآلي - التقرير العربي*
+============================
 👤 *اسم المستخدم:* $env:USERNAME
 🌐 *الـ IP المحلي:* $LocalIP
 📡 *حالة الإنترنت:* $NetReportAR
@@ -149,16 +156,21 @@ $Message = @"
 🧠 *المعالج:* $CPU
 📟 *الذاكرة العشوائية:* $RAM جيجابايت
 ============================
-✅ Diagnostic Finished Successfully!
-✅ تم الانتهاء من الفحص والصيانة بنجاح!
+✅ تم الانتهاء من الفحص والصيانة بنجاح وبدون أخطاء!
 "@
 
 $URL = "https://api.telegram.org/bot$BotToken/sendMessage"
-$Body = @{ chat_id = $ChatID; text = $Message; parse_mode = "Markdown" }
-$Response = Invoke-RestMethod -Uri $URL -Method Post -Body $Body -ErrorAction SilentlyContinue
+
+# إرسال الإنجليزي
+$BodyEN = @{ chat_id = $ChatID; text = $MessageEN; parse_mode = "Markdown" }
+$null = Invoke-RestMethod -Uri $URL -Method Post -Body $BodyEN -ErrorAction SilentlyContinue
+
+# إرسال العربي
+$BodyAR = @{ chat_id = $ChatID; text = $MessageAR; parse_mode = "Markdown" }
+$Response = Invoke-RestMethod -Uri $URL -Method Post -Body $BodyAR -ErrorAction SilentlyContinue
 
 if ($Response.ok) {
-    Write-Host "[SUCCESS] Telegram Notification Sent Successfully!" -ForegroundColor Green
+    Write-Host "[SUCCESS] Both Clean Notifications Sent Successfully!" -ForegroundColor Green
 } else {
     Write-Host "[ERROR] Failed to send Telegram notification." -ForegroundColor Red
 }
