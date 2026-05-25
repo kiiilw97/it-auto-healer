@@ -12,11 +12,13 @@ $ChatID   = "1778953224"
 Write-Host "`n[..] Checking Storage Health..." -ForegroundColor Yellow
 $DriveStatus = Get-WmiObject -Namespace root\wmi -Class MSStorageDriver_FailurePredictStatus -ErrorAction SilentlyContinue
 if ($DriveStatus.PredictFailure -eq $true) {
-    $HddReport = "🚨 WARNING: Hard Drive Failure Predicted!"
-    Write-Host "[ERROR] $HddReport" -ForegroundColor Red
+    $HddReportEN = "🚨 WARNING: Hard Drive Failure Predicted!"
+    $HddReportAR = "🚨 تحذير: يتوقع فشل الهاردسك قريباً!"
+    Write-Host "[ERROR] $HddReportEN" -ForegroundColor Red
 } else {
-    $HddReport = "✅ Healthy and Clean"
-    Write-Host "[SUCCESS] Hard Drive Status: $HddReport" -ForegroundColor Green
+    $HddReportEN = "✅ Healthy and Clean"
+    $HddReportAR = "✅ سليم ونظيف"
+    Write-Host "[SUCCESS] Hard Drive Status: $HddReportEN" -ForegroundColor Green
 }
 
 # 2. تنظيف ملفات الـ Temp الكاتمة للجهاز
@@ -44,19 +46,33 @@ Remove-Item -Path "$UpdatePath\*" -Recurse -Force -ErrorAction SilentlyContinue
 Start-Service -Name "wuauserv" -ErrorAction SilentlyContinue
 Write-Host "[SUCCESS] Windows Update Cache Cleaned ($SavedMB MB Cleared)!" -ForegroundColor Green
 
-# 4. [تحديث جذري] التثبيت الصامت الذكي بالفحص عبر الـ Registry
+# 4. التثبيت الصامت الذكي بالفحص المباشر للملفات والريجستري
 Write-Host "`n[..] Starting Smart Software Installer..." -ForegroundColor Yellow
 
 $Apps = @(
-    @{ Name = "Google Chrome"; ID = "Google.Chrome"; RegName = "*Chrome*" },
-    @{ Name = "Mozilla Firefox"; ID = "Mozilla.Firefox"; RegName = "*Mozilla Firefox*" },
-    @{ Name = "7-Zip"; ID = "7zip.7zip"; RegName = "*7-Zip*" }
+    @{ 
+        Name = "Google Chrome"
+        ID = "Google.Chrome"
+        Paths = @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe", "$env:ProgramFiles(x86)\Google\Chrome\Application\chrome.exe", "$env:LocalAppData\Google\Chrome\Application\chrome.exe")
+        RegName = "*Chrome*"
+    },
+    @{ 
+        Name = "Mozilla Firefox"
+        ID = "Mozilla.Firefox"
+        Paths = @("$env:ProgramFiles\Mozilla Firefox\firefox.exe", "$env:ProgramFiles(x86)\Mozilla Firefox\firefox.exe")
+        RegName = "*Mozilla Firefox*"
+    },
+    @{ 
+        Name = "7-Zip"
+        ID = "7zip.7zip"
+        Paths = @("$env:ProgramFiles\7-Zip\7z.exe", "$env:ProgramFiles(x86)\7-Zip\7z.exe")
+        RegName = "*7-Zip*"
+    }
 )
 
 $InstalledApps = @()
 $SkippedApps = @()
 
-# جلب لستة أسماء البرامج المثبتة في الريجستري (64 بت و 32 بت) وللمستخدم الحالي
 $RegPaths = @(
     "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*",
     "HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
@@ -65,15 +81,25 @@ $RegPaths = @(
 $RegList = Get-ItemProperty $RegPaths -ErrorAction SilentlyContinue | Select-Object -ExpandProperty DisplayName -ErrorAction SilentlyContinue
 
 foreach ($App in $Apps) {
-    # الفحص الذكي: هل اسم البرنامج موجود في سجل النظام (Registry)؟
-    $CheckReg = $RegList | Where-Object { $_ -like $App.RegName }
-    
-    if ($CheckReg) {
+    $AlreadyExists = $false
+
+    foreach ($Path in $App.Paths) {
+        if (Test-Path $Path) {
+            $AlreadyExists = $true
+            break
+        }
+    }
+
+    if (-not $AlreadyExists) {
+        $CheckReg = $RegList | Where-Object { $_ -like $App.RegName }
+        if ($CheckReg) { $AlreadyExists = $true }
+    }
+
+    if ($AlreadyExists) {
         Write-Host "[INFO] $($App.Name) is already installed. Skipping..." -ForegroundColor Gray
         $SkippedApps += $App.Name
     } else {
         Write-Host "[..] $($App.Name) NOT found. Installing silently..." -ForegroundColor Cyan
-        # تشغيل التثبيت مع إخفاء المخرجات المزعجة لمنع الأخطاء
         $null = winget install --id $($App.ID) --silent --accept-source-agreements --accept-package-agreements --scope user -ErrorAction SilentlyContinue
         $InstalledApps += $App.Name
     }
@@ -87,74 +113,17 @@ if ($WinKey) {
     $KeyReport = "$WinKey"
     Write-Host "[SUCCESS] Found Original Windows Key: $KeyReport" -ForegroundColor Cyan
 } else {
-    $KeyReport = "No digital key found in BIOS (Digital License used)."
-    Write-Host "[INFO] $KeyReport" -ForegroundColor Gray
+    $KeyReport = "No digital key found in BIOS / لم يتم العثور على مفتاح في البيوس"
+    Write-Host "[INFO] Digital License used." -ForegroundColor Gray
 }
 
 # 6. لوحة معلومات الشبكة المتقدمة الفعّالة
 Write-Host "`n[..] Checking Network Status..." -ForegroundColor Yellow
 
-# صيد الـ IP الحقيقي المربوط بالإنترنت مباشرة وتخطي الـ APIPA 169.254
 $LocalIP = (Get-NetRoute -DestinationPrefix 0.0.0.0/0 -ErrorAction SilentlyContinue | 
             Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | 
             Where-Object {$_.IPAddress -notlike "169.254*"} | 
             Select-Object -ExpandProperty IPAddress -First 1)
 
 if (-not $LocalIP) {
-    $LocalIP = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.IPAddress -notlike "127*" -and $_.IPAddress -notlike "169.254*"}).IPAddress | Select-Object -First 1
-}
-if (-not $LocalIP) { $LocalIP = "No Valid IPv4" }
-
-Write-Host "-> Your Local IP: $LocalIP" -ForegroundColor White
-
-if (Test-Connection -ComputerName 8.8.8.8 -Count 1 -Quiet) {
-    $NetReport = "⚡ Connected"
-    Write-Host "[SUCCESS] Internet Status: $NetReport" -ForegroundColor Green
-} else {
-    $NetReport = "❌ Disconnected"
-    Write-Host "[ERROR] Internet Status: $NetReport" -ForegroundColor Red
-}
-
-# 7. تقرير سريع للمعالج والذاكرة
-Write-Host "`n[..] Gathering System Resources..." -ForegroundColor Yellow
-$CPU = (Get-WmiObject Win32_Processor).Name
-$RAM = [Math]::Round((Get-WmiObject Win32_ComputerSystem).TotalPhysicalMemory / 1GB)
-Write-Host "-> CPU: $CPU" -ForegroundColor White
-Write-Host "-> Total RAM: $RAM GB" -ForegroundColor White
-
-Write-Host "`n==================================================" -ForegroundColor Cyan
-Write-Host "          [+] PHASE 6 (STABLE) - COMPLETED        " -ForegroundColor Cyan
-Write-Host "==================================================" -ForegroundColor Cyan
-
-# 🌐 8. صياغة التقرير وإرساله إلى تيليجرام
-Write-Host "`n[..] Sending Telegram Notification..." -ForegroundColor Yellow
-
-$NewInstalled = if($InstalledApps) { $InstalledApps -join ", " } else { "None (All up to date)" }
-$AlreadyThere = if($SkippedApps) { $SkippedApps -join ", " } else { "None" }
-
-$Message = @"
-🖥️ *IT AutoHealer - Ultimate Smart Report* 🖥️
-============================
-👤 *User Name:* $env:USERNAME
-🌐 *Local IP:* $LocalIP
-📡 *Internet:* $NetReport
-💾 *Storage Health:* $HddReport
-🧹 *Update Cache Cleared:* $SavedMB MB
-📥 *Newly Installed:* $NewInstalled
-📦 *Already Installed:* $AlreadyThere
-🔑 *Windows Key:* $KeyReport
-🧠 *Processor:* $CPU
-📟 *Memory RAM:* $RAM GB
-============================
-✅ *Status:* Diagnostic Finished with 0 Errors!
-"@
-
-$URL = "https://api.telegram.org/bot$BotToken/sendMessage"
-$Body = @{ chat_id = $ChatID; text = $Message; parse_mode = "Markdown" }
-$Response = Invoke-RestMethod -Uri $URL -Method Post -Body $Body -ErrorAction SilentlyContinue
-
-if ($Response.ok) {
-    Write-Host "[SUCCESS] Telegram Notification Sent Successfully!" -ForegroundColor Green
-} else {
-    Write-Host "[ERROR] Failed to send Telegram notification." -ForegroundColor Red
-}
+    $LocalIP = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.IPAddress -notlike "127*" -and $_.IPAddress -notlike "169.25
